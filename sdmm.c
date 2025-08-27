@@ -450,7 +450,7 @@ DSTATUS disk_initialize (
 
 	if (drv) return RES_NOTRDY;
 
-	dly_us(10000);
+	dly_us(1000000);
 	SPI_GPIO_RCC_INIT();
 	CS_INIT(); CS_H();		/* Initialize port pin tied to CS */
 	CK_INIT(); CK_L();		/* Initialize port pin tied to SCLK */

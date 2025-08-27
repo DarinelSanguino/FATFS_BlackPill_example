@@ -112,6 +112,7 @@ int main (void)
 		fr = f_close(&Fil);							/* Close the file */
 		if (fr == FR_OK && bw == 11) {		
 			gpio_set(GPIOA, GPIO_LED);
+			printf("File created successfully.\n");
 		}
 	}
 
