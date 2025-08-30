@@ -8,23 +8,7 @@
 / * No restriction on use. You can use, modify and redistribute it for
 /   personal, non-profit or commercial products UNDER YOUR RESPONSIBILITY.
 / * Redistributions of source code must retain the above copyright notice.
-/
-/-------------------------------------------------------------------------/
-  Features and Limitations:
-
-  * Easy to Port Bit-banging SPI
-    It uses only four GPIO pins. No complex peripheral needs to be used.
-
-  * Platform Independent
-    You need to modify only a few macros to control the GPIO port.
-
-  * Low Speed
-    The data transfer rate will be several times slower than hardware SPI.
-
-  * No Media Change Detection
-    Application program needs to perform a f_mount() after media change.
-
-/-------------------------------------------------------------------------*/
+/------------------------------------------------------------------------*/
 
 #include <errno.h>
 #include <stdio.h>
@@ -32,54 +16,12 @@
 #include <sys/unistd.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
-#include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/spi.h>
+#include <libopencm3/stm32/timer.h>
+
 #include "ff.h"		/* Obtains integer types for FatFs */
 #include "diskio.h"	/* Common include file for FatFs and disk I/O layer */
-
-
-/*-------------------------------------------------------------------------*/
-/* Platform dependent macros and functions needed to be modified           */
-/*-------------------------------------------------------------------------*/
-
-#define SPI_GPIO_PORT	GPIOA
-#define SPI_GPIO_RCC	RCC_GPIOA
-#define	MISO_GPIO		GPIO7
-#define MOSI_GPIO		GPIO6
-#define CK_GPIO			GPIO5
-#define CS_GPIO			GPIO4
-
-#define SPI_GPIO_RCC_INIT()	{ rcc_periph_clock_enable(SPI_GPIO_RCC); }
-
-#define MISO_INIT()			{ gpio_mode_setup(SPI_GPIO_PORT, GPIO_MODE_INPUT, GPIO_PUPD_NONE, MISO_GPIO); }	/* Initialize port for MMC MISO_R() as input */
-#define MISO_R()			gpio_get(SPI_GPIO_PORT, MISO_GPIO)/* Test for MMC MISO_R() ('H':true, 'L':false) */
-
-#define MOSI_INIT()			{ gpio_mode_setup(SPI_GPIO_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, MOSI_GPIO); }	/* Initialize port for MMC DI as output */
-#define MOSI_H()			{ gpio_set(SPI_GPIO_PORT, MOSI_GPIO); }	/* Set MMC DI "high" */
-#define MOSI_L()			{ gpio_clear(SPI_GPIO_PORT, MOSI_GPIO); }	/* Set MMC DI "low" */
-
-#define CK_INIT()			{ gpio_mode_setup(SPI_GPIO_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, CK_GPIO); }/* Initialize port for MMC SCLK as output */
-#define CK_H()				{ gpio_set(SPI_GPIO_PORT, CK_GPIO); }/* Set MMC SCLK "high" */
-#define	CK_L()				{ gpio_clear(SPI_GPIO_PORT, CK_GPIO); }/* Set MMC SCLK "low" */
-
-#define CS_INIT()			{ gpio_mode_setup(SPI_GPIO_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, CS_GPIO); }/* Initialize port for MMC CS as output */
-#define	CS_H()				{ gpio_set(SPI_GPIO_PORT, CS_GPIO); }/* Set MMC CS "high" */
-#define CS_L()				{ gpio_clear(SPI_GPIO_PORT, CS_GPIO); }	/* Set MMC CS "low" */
-
-
-static
-void dly_us (UINT n)
-{
-    timer_disable_counter(TIM2);                   
-    timer_set_counter(TIM2, 0);                    // CNT = 0
-    timer_set_period(TIM2, n);                     // ARR = n    
-    timer_generate_event(TIM2, TIM_EGR_UG);        
-    timer_clear_flag(TIM2, TIM_SR_UIF);            
-    timer_enable_counter(TIM2);
-
-    while (timer_get_flag(TIM2, TIM_SR_UIF) == 0);
-    timer_disable_counter(TIM2);
-}
+#include "sdmm_support.h"
 
 
 /*--------------------------------------------------------------------------
@@ -119,9 +61,8 @@ static
 BYTE CardType;			/* b0:MMC, b1:SDv1, b2:SDv2, b3:Block addressing */
 
 
-
 /*-----------------------------------------------------------------------*/
-/* Transmit bytes to the card (bitbanging)                               */
+/* Transmit bytes to the card (hardware SPI)                               */
 /*-----------------------------------------------------------------------*/
 
 static
@@ -131,89 +72,19 @@ void xmit_mmc (
 )
 {
 	BYTE d;
-
 	do {
 		d = *buff++;	/* Get a byte to be sent */
-		if (d & 0x80) 
-		{
-			MOSI_H(); 
-		}
-		else 
-		{
-			MOSI_L();	/* bit7 */
-		}
-		CK_H(); CK_L();
-		if (d & 0x40) 
-		{
-			MOSI_H();
-		} 
-		else 
-		{
-			MOSI_L();	/* bit6 */
-		}
-		CK_H(); CK_L();
-		if (d & 0x20)
-		{
-			MOSI_H(); 
-		}
-		else 
-		{
-			MOSI_L();	/* bit5 */
-		}
-		CK_H(); CK_L();
-		if (d & 0x10)
-		{
-			MOSI_H(); 
-		}
-		else 
-		{
-			MOSI_L();	/* bit4 */
-		}
-		CK_H(); CK_L();
-		if (d & 0x08)
-		{
-			MOSI_H();
-		}
-		else 
-		{
-			MOSI_L();	/* bit3 */
-		}		
-		CK_H(); CK_L();		
-		if (d & 0x04) 
-		{
-			MOSI_H();
-		}
-		else 
-		{
-			MOSI_L();	/* bit2 */
-		}
-		CK_H(); CK_L();
-		if (d & 0x02) 
-		{
-			MOSI_H();
-		}
-		else 
-		{
-			MOSI_L();	/* bit1 */
-		}
-		CK_H(); CK_L();
-		if (d & 0x01)
-		{
-			MOSI_H();
-		}
-		else
-		{ 
-			MOSI_L();	/* bit0 */
-		}
-		CK_H(); CK_L();
+		while(SPI_SR(SPI1) & SPI_SR_BSY);
+		spi_write(SPI1, d);
+		while (!(SPI_SR(SPI1) & SPI_SR_TXE));
 	} while (--bc);
+	
 }
 
-
-
 /*-----------------------------------------------------------------------*/
-/* Receive bytes from the card (bitbanging)                              */
+/* Receive bytes from the card                               */
 /*-----------------------------------------------------------------------*/
+
 
 static
 void rcvr_mmc (
@@ -221,33 +92,13 @@ void rcvr_mmc (
 	UINT bc		/* Number of bytes to receive */
 )
 {
-	BYTE r;
-
-
-	MOSI_H();	/* Send 0xFF */
-
 	do {
-		r = 0;	 if (MISO_R()) r++;	/* bit7 */
-		CK_H(); CK_L();
-		r <<= 1; if (MISO_R()) r++;	/* bit6 */
-		CK_H(); CK_L();
-		r <<= 1; if (MISO_R()) r++;	/* bit5 */
-		CK_H(); CK_L();
-		r <<= 1; if (MISO_R()) r++;	/* bit4 */
-		CK_H(); CK_L();
-		r <<= 1; if (MISO_R()) r++;	/* bit3 */
-		CK_H(); CK_L();
-		r <<= 1; if (MISO_R()) r++;	/* bit2 */
-		CK_H(); CK_L();
-		r <<= 1; if (MISO_R()) r++;	/* bit1 */
-		CK_H(); CK_L();
-		r <<= 1; if (MISO_R()) r++;	/* bit0 */
-		CK_H(); CK_L();
-		*buff++ = r;			/* Store a received byte */
-	} while (--bc);
+		while(SPI_SR(SPI1) & SPI_SR_BSY);
+		spi_write(SPI1, 0xFF);
+		*buff++ = spi_read(SPI1);			/* Store a received byte */
+	} while(--bc);
+
 }
-
-
 
 /*-----------------------------------------------------------------------*/
 /* Wait for card ready                                                   */
@@ -297,7 +148,9 @@ int select (void)	/* 1:OK, 0:Timeout */
 
 	CS_L();				/* Set CS# low */
 	rcvr_mmc(&d, 1);	/* Dummy clock (force MISO_R() enabled) */
+
 	if (wait_ready()) return 1;	/* Wait for card ready */
+	return 1;
 
 	deselect();
 	return 0;			/* Failed */
@@ -354,12 +207,15 @@ int xmit_datablock (	/* 1:OK, 0:Failed */
 	if (token != 0xFD) {		/* Is it data token? */
 		xmit_mmc(buff, 512);	/* Xmit the 512 byte data block to MMC */
 		rcvr_mmc(d, 2);			/* Xmit dummy CRC (0xFF,0xFF) */
-		rcvr_mmc(d, 1);			/* Receive data response */
-		if ((d[0] & 0x1F) != 0x05)	/* If not accepted, return with error */
-			return 0;
+		BYTE count = 10;
+		do {
+			rcvr_mmc(d, 1);			/* Receive data response */
+			if ((d[0] & 0x1F) == 0x05) return 1;
+		} while(count-- > 0);
+			
 	}
 
-	return 1;
+	return 0;
 }
 
 
@@ -447,15 +303,14 @@ DSTATUS disk_initialize (
 	UINT tmr;
 	DSTATUS s;
 
-
 	if (drv) return RES_NOTRDY;
+	
+
+	timer_init();
+	spi_gpio_init();
+	spi_init();
 
 	dly_us(1000000);
-	SPI_GPIO_RCC_INIT();
-	CS_INIT(); CS_H();		/* Initialize port pin tied to CS */
-	CK_INIT(); CK_L();		/* Initialize port pin tied to SCLK */
-	MISO_INIT();				/* Initialize port pin tied to DI */
-	MOSI_INIT();				/* Initialize port pin tied to MISO_R() */
 
 	for (n = 10; n; n--) rcvr_mmc(buf, 1);	/* Apply 80 dummy clocks and the card gets ready to receive command */
 

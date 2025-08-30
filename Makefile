@@ -8,12 +8,8 @@ LIBNAME_OPENCM3 = opencm3_stm32f4
 
 
 OPT = -O0
-DEFS += -DSTM32F4 -DNSS_MODE_OUTPUT
+DEFS += -DSTM32F4
 DIR_OPENCM3 = ./libopencm3
-DIR_TEST_COMMANDS = ./my_test_commands
-DIR_TERMINAL = ../..
-DIR_TERMINAL_lib = $(DIR_TERMINAL)/lib
-DIR_TERMINAL_module = $(DIR_TERMINAL)/module
 DIR_OBJ = ./obj
 DEBUG = -ggdb3
 LDSCRIPT = stm32f4.ld

@@ -7,12 +7,10 @@
 #include <string.h>
 #include <sys/unistd.h>
 #include <libopencm3/stm32/usart.h>
-#include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/spi.h>
-#include <libopencm3/stm32/usart.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
-#include <libopencm3/cm3/nvic.h>
+
 #include "ff.h"		/* Declarations of FatFs API */
 
 #define GPIO_TX1				GPIO9
@@ -47,20 +45,6 @@ int _write(int file, char *data, int len) {
 
     return bytes_written;
     return 0;
-}
-
-static void timer_setup(void)
-{	
-	rcc_periph_clock_enable(RCC_TIM2);
-	
-	rcc_periph_reset_pulse(RST_TIM2);
-	timer_set_mode(TIM2, TIM_CR1_CKD_CK_INT,
-		TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
-
-	timer_set_prescaler(TIM2, 24);
-
-	timer_disable_preload(TIM2);
-	timer_continuous_mode(TIM2);
 }
 
 static void usart_setup(void)
@@ -100,7 +84,6 @@ int main (void)
 
 	gpio_setup();
 	usart_setup();
-	timer_setup();
 	
 	printf("Fat FS in a Black Pill.\n");	
 	
